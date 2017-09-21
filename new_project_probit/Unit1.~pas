@@ -1,0 +1,471 @@
+unit Unit1;
+
+interface
+
+uses
+  Windows, Messages, SysUtils, Variants, Classes, Graphics, Controls, Forms,
+  Dialogs, StdCtrls;
+
+type
+  TForm1 = class(TForm)
+    Memo1: TMemo;
+    Button1: TButton;
+    ListBox1: TListBox;
+    ListBox2: TListBox;
+    ListBox3: TListBox;
+    ListBox4: TListBox;
+    ListBox5: TListBox;
+    Label1: TLabel;
+    Label2: TLabel;
+    Label3: TLabel;
+    Label4: TLabel;
+    Label5: TLabel;
+    ListBox6: TListBox;
+    Label6: TLabel;
+    ListBox7: TListBox;
+    Label7: TLabel;
+    procedure Button1Click(Sender: TObject);
+    procedure FormCreate(Sender: TObject);
+  private
+    { Private declarations }
+  public
+    { Public declarations }
+  end;
+
+var
+  Form1: TForm1;
+     max_c, Max_g                  : real;
+   N                             : byte;
+   doza                          : array [1..18] of real;
+   Animal_in_group, died         : array [1..18] of byte;
+   Gmax, omega                   : array [1..3] of real;
+   t95                           : array [1..36] of real;   //распределение Стьюдента, доверительная вероятность 95%
+                                                            //для исходного количества животных - 1 (N'-1)
+   m_ld50, d_ld50, u_ld50        :real;                     //стандартная погрешность полулетальной дозы ЛД50
+   N_animals                     :integer;                  //исходное количество живтных
+   p                             :integer;                  //для подсчета исходного количества животных
+   t_temp                        :real;                     //для перебора нужного распределения стьюдента
+   probit_temp                   :array [1..1000] of real;  //исправленный процент прореагировавших в группе
+   pp                            :integer;
+   so                            :integer;                  //степень округления при расчете ЛД50
+
+const
+    MachineEpsilon = 5E-16;  //константы для расчета пробита
+    MaxRealNumber = 1E300;
+    MinRealNumber = 1E-300;
+
+
+
+implementation
+uses Math;
+{$R *.dfm}
+
+function AP_FP_Less_Eq(X:Double; Y:Double):Boolean;
+begin
+    AP_FP_Less_Eq:=X<=Y;
+end;
+
+function AP_FP_Greater_Eq(X:Double; Y:Double):Boolean;
+begin
+    AP_FP_Greater_Eq:=X>=Y;
+end;
+
+function AP_FP_Greater(X:Double; Y:Double):Boolean;
+begin
+    AP_FP_Greater:=X>Y;
+end;
+
+function AP_FP_Less(X:Double; Y:Double):Boolean;
+begin
+    AP_FP_Less:=X<Y;
+end;
+
+function koef(procent: extended; probit: extended):extended;    //функция расчета весового коефициента
+begin
+    koef:=(10000*((1/sqrt(2*Pi))*exp((-1/2)*(probit-5)*(probit-5)) * (1/sqrt(2*Pi))*exp((-1/2)*(probit-5)*(probit-5))))/(procent*(100-procent));
+end;
+
+
+function InvNormalDistribution(y0 : Double):Double;   //функция обратного нормального распределния для подсчета пробита
+var
+    Expm2 : Double;
+    S2Pi : Double;
+    x : Double;
+    y : Double;
+    z : Double;
+    y2 : Double;
+    x0 : Double;
+    x1 : Double;
+    code : LongInt;
+    P0 : Double;
+    Q0 : Double;
+    P1 : Double;
+    Q1 : Double;
+    P2 : Double;
+    Q2 : Double;
+begin
+    Expm2 := 0.13533528323661269189; //экспонента в -2 степени
+    s2pi := 2.50662827463100050242;  //корень квадратный из 2Пи
+    if AP_FP_Less_Eq(y0,0) then
+    begin
+        Result := -MaxRealNumber;
+        Exit;
+    end;
+    if AP_FP_Greater_Eq(y0,1) then
+    begin
+        Result := MaxRealNumber;
+        Exit;
+    end;
+    code := 1;
+    y := y0;
+    if AP_FP_Greater(y,1.0-Expm2) then
+    begin
+        y := 1.0-y;
+        code := 0;
+    end;
+    if AP_FP_Greater(y,Expm2) then
+    begin
+        y := y-0.5;
+        y2 := y*y;
+        P0 := -59.9633501014107895267;
+        P0 := 98.0010754185999661536+y2*P0;
+        P0 := -56.6762857469070293439+y2*P0;
+        P0 := 13.9312609387279679503+y2*P0;
+        P0 := -1.23916583867381258016+y2*P0;
+        Q0 := 1;
+        Q0 := 1.95448858338141759834+y2*Q0;
+        Q0 := 4.67627912898881538453+y2*Q0;
+        Q0 := 86.3602421390890590575+y2*Q0;
+        Q0 := -225.462687854119370527+y2*Q0;
+        Q0 := 200.260212380060660359+y2*Q0;
+        Q0 := -82.0372256168333339912+y2*Q0;
+        Q0 := 15.9056225126211695515+y2*Q0;
+        Q0 := -1.18331621121330003142+y2*Q0;
+        x := y+y*y2*P0/Q0;
+        x := x*s2pi;
+        Result := X;
+        Exit;
+    end;
+    x := Sqrt(-2.0*Ln(y));
+    x0 := x-Ln(x)/x;
+    z := 1.0/x;
+    if AP_FP_Less(x,8.0) then
+    begin
+        P1 := 4.05544892305962419923;
+        P1 := 31.5251094599893866154+z*P1;
+        P1 := 57.1628192246421288162+z*P1;
+        P1 := 44.0805073893200834700+z*P1;
+        P1 := 14.6849561928858024014+z*P1;
+        P1 := 2.18663306850790267539+z*P1;
+        P1 := -1.40256079171354495875*0.1+z*P1;
+        P1 := -3.50424626827848203418*0.01+z*P1;
+        P1 := -8.57456785154685413611*0.0001+z*P1;
+        Q1 := 1;
+        Q1 := 15.7799883256466749731+z*Q1;
+        Q1 := 45.3907635128879210584+z*Q1;
+        Q1 := 41.3172038254672030440+z*Q1;
+        Q1 := 15.0425385692907503408+z*Q1;
+        Q1 := 2.50464946208309415979+z*Q1;
+        Q1 := -1.42182922854787788574*0.1+z*Q1;
+        Q1 := -3.80806407691578277194*0.01+z*Q1;
+        Q1 := -9.33259480895457427372*0.0001+z*Q1;
+        x1 := z*P1/Q1;
+    end
+    else
+    begin
+        P2 := 3.23774891776946035970;
+        P2 := 6.91522889068984211695+z*P2;
+        P2 := 3.93881025292474443415+z*P2;
+        P2 := 1.33303460815807542389+z*P2;
+        P2 := 2.01485389549179081538*0.1+z*P2;
+        P2 := 1.23716634817820021358*0.01+z*P2;
+        P2 := 3.01581553508235416007*0.0001+z*P2;
+        P2 := 2.65806974686737550832*0.000001+z*P2;
+        P2 := 6.23974539184983293730*0.000000001+z*P2;
+        Q2 := 1;
+        Q2 := 6.02427039364742014255+z*Q2;
+        Q2 := 3.67983563856160859403+z*Q2;
+        Q2 := 1.37702099489081330271+z*Q2;
+        Q2 := 2.16236993594496635890*0.1+z*Q2;
+        Q2 := 1.34204006088543189037*0.01+z*Q2;
+        Q2 := 3.28014464682127739104*0.0001+z*Q2;
+        Q2 := 2.89247864745380683936*0.000001+z*Q2;
+        Q2 := 6.79019408009981274425*0.000000001+z*Q2;
+        x1 := z*P2/Q2;
+    end;
+    x := x0-x1;
+    if code<>0 then
+    begin
+        x := -x;
+    end;
+    Result := x;
+end;
+
+procedure TForm1.Button1Click(Sender: TObject);
+
+label 1, 2, 3, 4, 11, 12, 13{, fin};
+
+Var
+    probit              : array [3..18,0..18] of real;
+    probit2             : array [1..1000] of real;
+    Weight_kt           : array [3..6,0..9] of real;
+    key                 : Boolean;
+    iii, yyy,ii,yy   : Byte;
+    j                   : word;
+    cif, conc_txt       : string;
+    CX, AY, BXY, DX     : real;
+    A, B, ld16, ld50, ld84, ld100, XYZ,XZ,X2Z,Z,YZ        : real;
+    i, i_animals           :integer;
+
+begin
+
+t95[1]:=12.706;
+t95[2]:=4.303;
+t95[3]:=3.182;
+t95[4]:=2.776;
+t95[5]:=2.571;
+t95[6]:=2.447;
+t95[7]:=2.365;
+t95[8]:=2.306;
+t95[9]:=2.262;
+t95[10]:=2.228;
+t95[11]:=2.201;
+t95[12]:=2.179;
+t95[13]:=2.16;
+t95[14]:=2.145;
+t95[15]:=2.131;
+t95[16]:=2.12;
+t95[17]:=2.11;
+t95[18]:=2.101;
+t95[19]:=2.093;
+t95[20]:=2.086;
+t95[21]:=2.08;
+t95[22]:=2.074;
+t95[23]:=2.069;
+t95[24]:=2.064;
+t95[25]:=2.06;
+t95[26]:=2.056;
+t95[27]:=2.052;
+t95[28]:=2.048;
+t95[29]:=2.045;
+t95[30]:=2.042;
+t95[31]:=2.021; //??? 40-? ??????? ???????
+t95[32]:=2.009; //??? 50-? ??????? ???????
+t95[33]:=1.984; //??? 100-? ??????? ???????
+t95[34]:=1.972; //??? 200-? ??????? ???????
+t95[35]:=1.965; //??? 500-? ??????? ???????
+t95[36]:=1.962;
+
+SetRoundMode(rmUp);
+              {2 - replace TAB to SPACE }
+For i:=0 to Memo1.Lines.Count-1 do
+  begin
+    cif:=Memo1.Lines[i];
+    for j:=2 to length(cif) do
+        if copy(cif,j,1)= chr(9) then
+          begin
+            Delete(cif,j,1);
+            Insert(chr(32),cif,j);
+            Memo1.Lines[i]:=cif;
+          end;
+  end;
+
+listBox1.Items.Clear;
+listBox2.Items.Clear;
+listBox3.Items.Clear;
+//  DELETE EMPTY STRINGS
+1:
+  I:=0; key := False;
+WHILE I+1<=Memo1.Lines.Count DO
+begin
+  IF copy(Memo1.Lines[I],1,1)=' ' THEN
+    begin
+     cif:=Memo1.Lines[I];
+     Delete(cif,1,1);
+     Memo1.Lines[I]:=cif;
+     key := True;
+    end;
+   I:=I+1;
+end;
+If key = True Then goto 1;
+
+2:
+  I:=0; key := False;
+WHILE I+1<=Memo1.Lines.Count DO
+begin
+  IF Memo1.Lines[I]='' THEN
+    begin
+     Memo1.Lines.Delete(I);
+     key := True;
+    end;
+   I:=I+1;
+end;
+
+If key = True Then goto 2;
+
+N:=Memo1.Lines.Count;
+if N<3 then
+ begin
+  MessageDlg('Must be 3 experimental groups, as minimum',mtError,[mbOK],0);
+  //goto fin;
+ end;
+
+// распихиваем строки из трех цифр, разделенных двумя пробелами на 3 цифры,
+// каждая в своем listbox'е
+  I:=0;
+WHILE I+1<=N DO
+begin
+    cif:=Memo1.Lines[I];
+   for j:=1 to length(cif)-1 do
+      IF Copy(cif,j,1)=' ' THEN
+        begin
+          conc_txt:=copy(cif,1,j-1);
+          listbox1.Items.Add(conc_txt);
+          delete(cif,1,length(conc_txt)+1);
+          goto 11;
+        end;
+11:
+   for j:=1 to length(cif)-1 do
+      IF Copy(cif,j,1)=' ' THEN
+        begin
+          conc_txt:=copy(cif,1,j-1);
+          listbox2.Items.Add(conc_txt);
+          delete(cif,1,length(conc_txt)+1);
+          goto 12;
+        end;
+
+12:
+  listbox3.Items.Add(cif);
+
+          goto 4;
+4:
+   I:=I+1;
+        end;
+
+       t_temp:=0;
+       N_animals:=0;                                         //считаем исходное
+       for p:=0 to listbox2.Items.Count-1 do                 //количество
+         N_animals:=N_animals+StrToInt(listbox2.Items[p]);   //животных
+
+ XYZ:=0; Z:=0; XZ:=0; YZ:=0; X2Z:=0;
+
+FOR I:=1 TO N do
+  begin
+   doza[i]:=StrToFloat(listbox1.Items[I-1]);
+   Animal_in_group[i]:=StrToint(listbox2.Items[I-1]);
+   died[i]:=StrToint(listbox3.Items[I-1]);
+
+  for iii:=3 to 6 do
+    for yyy:=0 to 9 do
+      begin
+
+      if died[i]=0 then
+          probit_temp[i]:=((0.25*100)/Animal_in_group[i])*1;
+
+      if died[i]=Animal_in_group[i] then
+          probit_temp[i]:=(((Animal_in_group[i]-0.25)*100)/Animal_in_group[i])*1;
+
+      if (died[i]<>Animal_in_group[i]) and (died[i]<>0) then
+          probit_temp[i]:=(died[i]/Animal_in_group[i])*100;
+
+      if (probit_temp[i]>=0) and (probit_temp[i]<=1000) then
+        probit_temp[i]:={RoundTo(}probit_temp[i]{, -4)};
+
+
+
+        //ListBox4.Items[i-1]:=floattostr(probit_temp[i]);
+        ListBox4.Items[i-1]:=floattostr(RoundTo(probit_temp[i],so));
+        ListBox5.Items[i-1]:=floattostr(RoundTo(log10(doza[i]),so));
+        ListBox6.Items[i-1]:=floattostr(RoundTo(InvNormalDistribution(probit_temp[i]/100)+5,so));
+        ListBox7.Items[i-1]:=floattostr(koef(probit_temp[i],(InvNormalDistribution(probit_temp[i]/100)+5)));
+
+
+     { if probit2[round(probit_temp[i])]< (iii + 0.1*yyy) then
+        begin
+          ii:=iii;  yy:=YYY;
+          goto 13;
+        end;}
+      end;
+//13:
+
+   //Z := Z + koef(probit_temp[i],(RoundTo(InvNormalDistribution(probit_temp[i]/100)+5, so)));                                                                                        //сумма весовых коефициентов
+   Z := Z + koef(probit_temp[i],(InvNormalDistribution(probit_temp[i]/100)+5));                        //без округления сумма весовых коефициентов
+   XZ := XZ + log10(doza[i]) * koef(probit_temp[i],(InvNormalDistribution(probit_temp[i]/100)+5));     //без округления сумма произведения весовых коефициентов на логарифм дозы
+   //XZ := XZ + RoundTo(log10(doza[i]), so) * RoundTo(koef(probit_temp[i],(RoundTo(InvNormalDistribution(probit_temp[i]/100)+5, so))), so);                                       //сумма произведения весовых коефициентов на логарифм дозы
+   YZ := YZ + (InvNormalDistribution(probit_temp[i]/100)+5) * koef(probit_temp[i],(InvNormalDistribution(probit_temp[i]/100)+5));
+   //YZ := YZ + RoundTo(InvNormalDistribution(probit_temp[i]/100)+5, so) * RoundTo(koef(probit_temp[i],(RoundTo(InvNormalDistribution(probit_temp[i]/100)+5, so))), so);
+
+   //XYZ := XYZ + log10(doza[i]) * koef(probit_temp[i],(InvNormalDistribution(probit_temp[i]/100)+5)) * (InvNormalDistribution(probit_temp[i]/100)+5);
+   XYZ := XYZ + RoundTo(log10(doza[i]), -2) * RoundTo(koef(probit_temp[i],(RoundTo(InvNormalDistribution(probit_temp[i]/100)+5, -2))), -2) * RoundTo(InvNormalDistribution(probit_temp[i]/100)+5, -2);
+
+   X2Z := X2Z + RoundTo(koef(probit_temp[i],(RoundTo(InvNormalDistribution(probit_temp[i]/100)+5, -3))), -4) *  RoundTo(log10(doza[i]), -4) * RoundTo(log10(doza[i]), -3);
+   //X2Z := X2Z + koef(probit_temp[i],(InvNormalDistribution(probit_temp[i]/100)+5)) *  log10(doza[i]) * log10(doza[i]);
+
+
+
+   //XYZ := XYZ + RoundTo(log10(doza[i]), so) * RoundTo(koef(probit_temp[i],(RoundTo(InvNormalDistribution(probit_temp[i]/100)+5, so))), so) * RoundTo(InvNormalDistribution(probit_temp[i]/100)+5, so);
+   //X2Z := X2Z + RoundTo(koef(probit_temp[i],(RoundTo(InvNormalDistribution(probit_temp[i]/100)+5, so))), so) *  RoundTo(log10(doza[i]), so) * RoundTo(log10(doza[i]), so);
+
+
+  end;
+
+  B := (XYZ - (XZ * YZ)/Z)/(X2Z - (XZ * XZ)/Z);
+  A := (YZ - B * XZ)/Z;
+
+  ld16:=exp(((4-A)/B)*ln(10));                    //считаем ЛД16
+  ld50:=exp(((5-A)/B)*ln(10));                    //считаем ЛД50
+  ld84:=exp(((6-A)/B)*ln(10));                    //считаем ЛД84
+  ld100 := ld84 + (ld84-ld50)/2;                  //считаем ЛД100
+  m_ld50:=(ld84-ld16)/(sqrt(2*N_animals));        //считаем погрешность
+
+    for i_animals:=1 to 30 do                     //? ????? ?????????? ??????????
+    begin                                         //???????? ?? 1 ?? 30 ?
+      if (N_animals>0) and (N_animals<31) then    //????????? ???????????????
+        t_temp:=t95[N_animals];                   //??????????
+    end;
+
+  if (N_animals>30) and (N_animals<40) then       //?????????? 31-39 ??? ????????
+    t_temp:=t95[30];
+  if (N_animals>39) and (N_animals<50) then       //?????????? 40-49 ??? ????????
+    t_temp:=t95[31];
+  if (N_animals>49) and (N_animals<100) then      //?????????? 50-99 ??? ????????
+    t_temp:=t95[32];
+  if (N_animals>99) and (N_animals<200) then      //?????????? 100-199 ??? ????????
+    t_temp:=t95[33];
+  if (N_animals>199) and (N_animals<500) then     //?????????? 200-499 ??? ????????
+    t_temp:=t95[34];
+  if (N_animals>499) and (N_animals<1000) then    //?????????? 500-999 ??? ????????
+    t_temp:=t95[35];
+  if (N_animals>999) then                         //коэфициент для более чем 1000 животных
+    t_temp:=t95[36];
+  d_ld50:=ld50-(t_temp*m_ld50);                   //нижняя граница 95%-го доверительного интервала
+  u_ld50:=ld50+(t_temp*m_ld50);                   //верхняя граница 95%-го доверительного интервала
+
+  memo1.lines.add(' ');
+  memo1.lines.add('Результаты расчетов:');
+  memo1.lines.add('xyz = '+floattostr(xyz));   memo1.lines.add('z = '+floattostr(z));
+  memo1.lines.add('xz = '+floattostr(xz));
+  memo1.lines.add('yz = '+floattostr(yz));
+  memo1.lines.add('x2z = '+floattostr(x2z));
+  memo1.lines.add('a = '+floattostr(a));
+  memo1.lines.add('b = '+floattostr(b));
+  memo1.lines.add('LD16 = '+floattostr(ld16));
+  memo1.lines.add('LD50 = '+FormatFloat('00.000',ld50)+' ± '+FormatFloat('00.000',m_ld50));
+  memo1.lines.add('N_animals = '+floattostr(N_animals));
+  memo1.lines.add('S_LD50 = '+FormatFloat('00.000',m_ld50));
+  memo1.lines.add('нижняя граница 95%-го доверительного интервала = '+FormatFloat('.000',d_ld50));
+  memo1.lines.add('верхняя граница 95%-го доверительного интервала = '+FormatFloat('.000',u_ld50));
+end;
+
+procedure TForm1.FormCreate(Sender: TObject);
+begin
+so:=-4;
+memo1.Text:='';
+Memo1.Lines.Add('600	6	1');
+Memo1.Lines.Add('700	7	1');
+Memo1.Lines.Add('850	7	4');
+Memo1.Lines.Add('900	6	5');
+Memo1.Lines.Add('1000	6	5');
+end;
+
+end.
